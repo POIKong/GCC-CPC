@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPC/GCC 合规速查工具</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+    <div id="app" class="max-w-md mx-auto px-4 py-8 md:max-w-2xl">
+        
+        <div class="text-center mb-8">
+            <h1 class="text-2xl md:text-3xl font-extrabold text-blue-600 tracking-wide mb-2">输入品名，快速查询认证要求</h1>
+            <p class="text-sm text-slate-400">美国消费品安全委员会 CPSC 产品认证速查</p>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-6">
+            <div class="flex gap-2 mb-4">
+                <input 
+                    type="text" 
+                    v-model="searchQuery" 
+                    @keyup.enter="handleSearch"
+                    placeholder="搜索产品..." 
+                    class="input input-bordered input-primary w-full rounded-xl bg-slate-50"
+                />
+                <button @click="handleSearch" class="btn btn-primary rounded-xl px-6">查询</button>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2 text-sm">
+                <span class="text-slate-400 font-medium">热门：</span>
+                <button 
+                    v-for="tag in hotTags" 
+                    :key="tag"
+                    @click="clickTag(tag)"
+                    class="badge badge-ghost p-3 cursor-pointer hover:badge-primary hover:text-white transition-all rounded-lg"
+                >
+                    {{ tag }}
+                </button>
+            </div>
+        </div>
+
+        <div v-if="results.length === 0 && !hasSearched" class="space-y-4">
+            <div class="text-md font-bold text-slate-500 px-1">证书类型说明</div>
+            
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex gap-4 items-start">
+                <div class="p-3 bg-blue-50 text-blue-500 rounded-xl font-bold text-lg">✓</div>
+                <div>
+                    <h3 class="font-bold text-lg text-blue-600 flex items-center gap-2">
+                        儿童产品证书 <span class="text-xs bg-blue-50 text-blue-500 px-2 py-0.5 rounded-md font-normal">CPC</span>
+                    </h3>
+                    <p class="text-sm text-slate-500 mt-1 leading-relaxed">
+                        适用于以12岁及以下儿童为主要使用对象的儿童产品。需经CPSC认可的第三方实验室测试，并签发CPC证书。
+                    </p>
+                    <div class="text-xs text-slate-400 mt-2">适用：12岁以下儿童产品</div>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex gap-4 items-start">
+                <div class="p-3 bg-emerald-50 text-emerald-500 rounded-xl font-bold text-lg">✓</div>
+                <div>
+                    <h3 class="font-bold text-lg text-emerald-600 flex items-center gap-2">
+                        一般合规证书 <span class="text-xs bg-emerald-50 text-emerald-500 px-2 py-0.5 rounded-md font-normal">GCC</span>
+                    </h3>
+                    <p class="text-sm text-slate-500 mt-1 leading-relaxed">
+                        适用于非儿童类的一般消费品。需基于合理测试或逐件测试计划，由进口商或制造商自行签发GCC证书。
+                    </p>
+                    <div class="text-xs text-slate-400 mt-2">适用：非儿童类产品</div>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="results.length === 0 && hasSearched" class="bg-white p-12 rounded-2xl text-center shadow-sm border border-slate-100 text-slate-400">
+            😢 未查到相关合规要求，请尝试换一个关键词搜索
+        </div>
+
+        <div v-if="results.length > 0" class="space-y-4">
+            <div class="flex justify-between items-center px-1">
+                <div class="text-md font-bold text-slate-500">查询结果 ({{ results.length }}条)</div>
+                <button @click="resetSearch" class="text-xs text-blue-500 hover:underline">返回说明</button>
+            </div>
+
+            <div v-for="(item, idx) in results" :key="idx" class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="p-4 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
+                    <div>
+                        <div class="font-bold text-lg text-slate-800">{{ item.product_zh }}</div>
+                        <div class="text-xs text-slate-400 italic">{{ item.product }}</div>
+                    </div>
+                    <span :class="item.cert_type === 'CPC' ? 'badge badge-primary font-bold' : 'badge badge-accent font-bold'">
+                        {{ item.cert_type }}
+                    </span>
+                </div>
+                <div class="p-4 space-y-3">
+                    <div class="text-sm">
+                        <span class="text-slate-400">法律条文：</span>
+                        <a :href="item.doc_url" target="_blank" class="text-blue-500 hover:underline font-medium inline-flex items-center gap-1">
+                            {{ item.legal_citation }} ↗
+                        </a>
+                    </div>
+                    <div v-if="item.matched_regulations && item.matched_regulations.length > 0" class="mt-2 pt-2 border-t border-dashed border-slate-100">
+                        <div class="text-xs font-bold text-slate-400 mb-2">匹配的具体法规细则：</div>
+                        <ul class="text-xs space-y-1.5 list-disc list-inside text-slate-600">
+                            <li v-for="reg in item.matched_regulations" :key="reg.citation_code">
+                                <span class="bg-slate-100 px-1 py-0.5 rounded font-mono text-slate-500">{{ reg.citation_code }}</span> 
+                                {{ reg.regulation_detail }}
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center text-xs text-slate-400 space-y-1 mt-12">
+            <p class="font-semibold text-slate-500">本工具数据来源于美国消费品安全委员会 (CPSC)</p>
+            <p>本工具不构成任何法律建议，最终请以 CPSC 官方要求为准</p>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const searchQuery = ref('');
+                const allData = ref([]);
+                const results = ref([]);
+                const hasSearched = ref(false);
+                const hotTags = ['玩具', '儿童服装', '婴儿床', '婴儿推车', '自行车', '打火机', '床垫', '纽扣电池'];
+
+                // 页面加载时自动拉取并动态解码本地混淆文件
+                onMounted(async () => {
+                    try {
+                        // 💡 改为请求混淆后的 .dat 文件
+                        const response = await fetch('./data.dat');
+                        if (!response.ok) throw new Error('网络请求失败');
+                        
+                        const encryptedText = await response.text();
+                        
+                        // 💡 使用浏览器的原生 atob() 函数进行 Base64 解码
+                        // 并使用 decodeURIComponent 处理中文乱码问题
+                        const decryptedText = decodeURIComponent(
+                            atob(encryptedText).split('').map(function(c) {
+                                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                            }).join('')
+                        );
+                        
+                        // 将还原后的干净 JSON 字符串解析为 Vue 对象
+                        allData.value = JSON.parse(decryptedText);
+                        console.log("✅ 数据动态解密装载成功，当前条数:", allData.value.length);
+                        
+                    } catch (error) {
+                        console.error("❌ 加载或解密数据失败:", error);
+                    }
+                });
+
+                // 核心搜索逻辑：支持中文、英文、法规编码三向检索
+                const handleSearch = () => {
+                    const q = searchQuery.value.trim().toLowerCase();
+                    if (!q) {
+                        results.value = [];
+                        hasSearched.value = false;
+                        return;
+                    }
+
+                    results.value = allData.value.filter(item => {
+                        const matchZh = item.product_zh && item.product_zh.toLowerCase().includes(q);
+                        const matchEn = item.product && item.product.toLowerCase().includes(q);
+                        const matchCitation = item.legal_citation && item.legal_citation.toLowerCase().includes(q);
+                        return matchZh || matchEn || matchCitation;
+                    });
+                    
+                    hasSearched.value = true;
+                };
+
+                const clickTag = (tag) => {
+                    searchQuery.value = tag;
+                    handleSearch();
+                };
+
+                const resetSearch = () => {
+                    searchQuery.value = '';
+                    results.value = [];
+                    hasSearched.value = false;
+                };
+
+                return {
+                    searchQuery,
+                    results,
+                    hasSearched,
+                    hotTags,
+                    handleSearch,
+                    clickTag,
+                    resetSearch
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
